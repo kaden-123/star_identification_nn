@@ -1,22 +1,23 @@
+import torch
 from torch import nn
 import h5py
 from torch.utils.data import Dataset
 
 class star_tracker_v1(nn.Module):
-    def __init__(self, n_bins, n_classes):
+    def __init__(self, n_bins, n_classes, hidden):
         super().__init__()
 
         self.bn1 = nn.BatchNorm1d(n_bins) 
         
         self.grp1 = nn.Sequential(
-            nn.Linear(n_bins, 1000),
+            nn.Linear(n_bins, hidden),
             nn.ReLU(),
-            nn.BatchNorm1d(1000),
+            nn.BatchNorm1d(hidden),
             nn.Dropout(p=0.2),
         )
 
         self.grp2 = nn.Sequential(
-            nn.Linear(1000, n_classes),
+            nn.Linear(hidden, n_classes),
             nn.BatchNorm1d(n_classes),
             nn.Dropout(p=0.2),
         )

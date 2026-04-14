@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib as mlp
 import pandas as pd
 import random
+import quaternion
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 from scipy import ndimage
@@ -21,21 +22,20 @@ class Camera:
         random.seed(1)
         self.direction = np.random.normal(size=3)
         self.direction /= np.linalg.norm(self.direction)
+        self._filter()
 
     def point_to_vec(self, vec):
         self.direction = vec / np.linalg.norm(vec)
+        self._filter()
 
     def point(self, catalog, starID):
         mask = self.data[catalog] == starID
         self.direction = np.array(self.data[mask][["ux", "uy", "uz"]]) 
         self.direction = self.direction.reshape(3,)
+
+        self._filter()
         
     def prep(self):
-        #find dot between cam direction and star unit vector to filter seeable stars
-        dots = np.dot(self.data[["ux", "uy", "uz"]].to_numpy(), self.direction)
-        mask = (dots >= np.cos(self.fov / 2))
-        self.data = self.data[mask].reset_index(drop=True)
-        
         #find x and y axis unit vectors for projection
         tmp = np.array([0, 0, 1])
         xc = np.cross(self.direction, tmp)
@@ -56,6 +56,31 @@ class Camera:
 
         #append to dataframe
         self.data = pd.concat([self.data, pd.DataFrame(px, columns=["px"]), pd.DataFrame(py, columns=["py"])], axis=1)
+
+    def rotate_img(self, degrees):        
+        theta = np.deg2rad(degrees);
+        temp = np.quaternion(0, self.direction[0], self.direction[1], self.direction[2])
+        temp *= np.sin(theta / 2)
+        
+        q = temp + np.quaternion(np.cos(theta / 2),0,0, 0)
+        q_conj = q.conjugate()
+        
+        new_vecs = []
+        for index, row in self.data.iterrows():
+            sv = row[["ux", "uy", "uz"]].to_numpy()
+            v = np.quaternion(0, sv[0], sv[1], sv[2])
+            L = q * v * q_conj
+            new_vecs.append(np.array([L.x, L.y, L.z]))
+        
+        new_vecs = np.vstack(new_vecs)
+        self.data.loc[:, ["ux", "uy", "uz"]] = new_vecs
+
+
+    def _filter(self):
+        #find dot between cam direction and star unit vector to filter seeable stars
+        dots = np.dot(self.data[["ux", "uy", "uz"]].to_numpy(), self.direction)
+        mask = (dots >= np.cos(self.fov / 2))
+        self.data = self.data[mask].reset_index(drop=True)
         
     def draw_img(self):
         #image stuff yup and yes its kinda broken rn
@@ -75,6 +100,7 @@ class Camera:
         im = Image.fromarray(self.image)
         im.show()
 
+    #for the fact that i use inplace changes and i might mess things up
     def reset_data(self, data):
         coords = data[["x", "y", "z"]].to_numpy()
         coords /= np.linalg.norm(coords, axis = 1, keepdims=1) 
